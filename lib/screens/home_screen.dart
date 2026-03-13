@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
 import '../models/rental_item.dart';
 import '../widgets/animations.dart';
@@ -16,10 +17,79 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen>
+    with TickerProviderStateMixin {
   int _selectedNavIndex = 0;
   int _selectedCategoryIndex = 0;
-  int _selectedBookingTab = 0; // 0=Active, 1=Past
+  int _selectedBookingTab = 0;
+
+  // Animation controllers
+  late AnimationController _pulseController;   // repeating — dot + live badge
+  late AnimationController _hintController;    // repeating — search hint cycle
+
+  // Per-category accent colors (matches categories order: Tools, Weighing, Electronics, Others)
+  static const _categoryAccentColors = [
+    Color(0xFF0B6E6B), // Tools — primary teal
+    Color(0xFFF59E0B), // Weighing — amber (starColor)
+    Color(0xFF0EA5E9), // Electronics — secondary sky blue
+    Color(0xFF2DD4BF), // Others — accent cyan
+  ];
+
+  // Search hint cycle state
+  int _hintIndex = 0;
+  static const _hints = [
+    'Search equipment...',
+    'Find power tools...',
+    'Rent machines...',
+    'Book furniture...',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1600),
+    )..repeat(reverse: true);
+
+    _hintController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2800),
+    )..addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        _cycleHint();
+        _hintController.reset();
+        _hintController.forward();
+      }
+    });
+    _hintController.forward();
+  }
+
+  void _cycleHint() {
+    if (!mounted) return;
+    setState(() => _hintIndex = (_hintIndex + 1) % _hints.length);
+  }
+
+  @override
+  void dispose() {
+    _pulseController.dispose();
+    _hintController.dispose();
+    super.dispose();
+  }
+
+  void _onNavTap(int index) {
+    if (_selectedNavIndex == index) return;
+    HapticFeedback.selectionClick();
+    setState(() => _selectedNavIndex = index);
+  }
+
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }
 
   void _openDetail(RentalItem item) {
     Navigator.push(context, FadePageRoute(page: ItemDetailScreen(item: item)));
@@ -40,38 +110,84 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ],
         ),
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceColor,
-          border: Border(
-            top: BorderSide(color: AppTheme.dividerColor.withValues(alpha: 0.6), width: 1),
-          ),
+      bottomNavigationBar: _buildAnimatedBottomNav(),
+    );
+  }
+
+  // ─── ANIMATED BOTTOM NAV ──────────────────────────────────────────────────
+
+  Widget _buildAnimatedBottomNav() {
+    final items = [
+      (Icons.home_outlined, Icons.home_rounded, 'Home'),
+      (Icons.grid_view_outlined, Icons.grid_view_rounded, 'Categories'),
+      (Icons.receipt_long_outlined, Icons.receipt_long_rounded, 'Bookings'),
+      (Icons.person_outline_rounded, Icons.person_rounded, 'Profile'),
+    ];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceColor,
+        border: Border(
+          top: BorderSide(color: AppTheme.dividerColor.withValues(alpha: 0.6), width: 1),
         ),
-        child: BottomNavigationBar(
-          currentIndex: _selectedNavIndex,
-          onTap: (index) => setState(() => _selectedNavIndex = index),
-          items: const [
-            BottomNavigationBarItem(
-              icon: Padding(padding: EdgeInsets.only(bottom: 2), child: Icon(Icons.home_outlined)),
-              activeIcon: Padding(padding: EdgeInsets.only(bottom: 2), child: Icon(Icons.home_rounded)),
-              label: 'Home',
-            ),
-            BottomNavigationBarItem(
-              icon: Padding(padding: EdgeInsets.only(bottom: 2), child: Icon(Icons.grid_view_outlined)),
-              activeIcon: Padding(padding: EdgeInsets.only(bottom: 2), child: Icon(Icons.grid_view_rounded)),
-              label: 'Categories',
-            ),
-            BottomNavigationBarItem(
-              icon: Padding(padding: EdgeInsets.only(bottom: 2), child: Icon(Icons.receipt_long_outlined)),
-              activeIcon: Padding(padding: EdgeInsets.only(bottom: 2), child: Icon(Icons.receipt_long_rounded)),
-              label: 'Bookings',
-            ),
-            BottomNavigationBarItem(
-              icon: Padding(padding: EdgeInsets.only(bottom: 2), child: Icon(Icons.person_outline_rounded)),
-              activeIcon: Padding(padding: EdgeInsets.only(bottom: 2), child: Icon(Icons.person_rounded)),
-              label: 'Profile',
-            ),
-          ],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 12, offset: const Offset(0, -4))],
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          child: Row(
+            children: List.generate(items.length, (index) {
+              final (outlinedIcon, filledIcon, label) = items[index];
+              final isActive = _selectedNavIndex == index;
+
+              return Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _onNavTap(index),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 280),
+                    curve: Curves.easeOutCubic,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isActive ? AppTheme.primaryColor.withValues(alpha: 0.1) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 200),
+                          switchInCurve: Curves.elasticOut,
+                          switchOutCurve: Curves.easeIn,
+                          transitionBuilder: (child, anim) => ScaleTransition(
+                            scale: anim,
+                            child: FadeTransition(opacity: anim, child: child),
+                          ),
+                          child: Icon(
+                            isActive ? filledIcon : outlinedIcon,
+                            key: ValueKey(isActive),
+                            size: 22,
+                            color: isActive ? AppTheme.primaryColor : AppTheme.textTertiary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        AnimatedDefaultTextStyle(
+                          duration: const Duration(milliseconds: 200),
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: isActive ? FontWeight.w700 : FontWeight.w400,
+                            color: isActive ? AppTheme.primaryColor : AppTheme.textTertiary,
+                          ),
+                          child: Text(label),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
         ),
       ),
     );
@@ -81,40 +197,60 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Widget _buildHomeContent() {
     return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
+          // ── Header ──────────────────────────────────────────────────────
           FadeSlideIn(
             index: 0,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
               child: Row(
                 children: [
+                  // Avatar with glow
                   Container(
-                    width: 48,
-                    height: 48,
+                    width: 48, height: 48,
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [AppTheme.primaryColor, AppTheme.primaryColor.withValues(alpha: 0.7)],
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF0B6E6B), Color(0xFF2DD4BF)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
                       borderRadius: BorderRadius.circular(16),
+                      boxShadow: [BoxShadow(color: AppTheme.primaryColor.withValues(alpha: 0.28), blurRadius: 10, offset: const Offset(0, 4))],
                     ),
                     child: const Center(
-                      child: Text('S', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
+                      child: Text('S', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
                     ),
                   ),
                   const SizedBox(width: 14),
+
+                  // Greeting + title
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Good morning', style: TextStyle(fontSize: 13, color: AppTheme.textTertiary, fontWeight: FontWeight.w400)),
+                        Row(
+                          children: [
+                            Text(
+                              _getGreeting(),
+                              style: TextStyle(fontSize: 13, color: AppTheme.textTertiary, fontWeight: FontWeight.w400),
+                            ),
+                            const SizedBox(width: 6),
+                            Text('👋', style: const TextStyle(fontSize: 13)),
+                          ],
+                        ),
                         const SizedBox(height: 2),
-                        const Text('Find & Rent', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.textPrimary, letterSpacing: -0.6, height: 1.1)),
+                        const Text(
+                          'Find & Rent',
+                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.textPrimary, letterSpacing: -0.6, height: 1.1),
+                        ),
                       ],
                     ),
                   ),
+
+                  // Widget settings button
                   TapScale(
                     onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WidgetSettingsScreen())),
                     child: Container(
@@ -124,6 +260,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     ),
                   ),
                   const SizedBox(width: 8),
+
+                  // Notification button with pulsing dot
                   TapScale(
                     child: Container(
                       width: 44, height: 44,
@@ -133,10 +271,24 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         children: [
                           const Icon(Icons.notifications_none_rounded, size: 22, color: AppTheme.textPrimary),
                           Positioned(
-                            top: 10, right: 12,
-                            child: Container(
-                              width: 8, height: 8,
-                              decoration: BoxDecoration(color: const Color(0xFFEF4444), shape: BoxShape.circle, border: Border.all(color: AppTheme.cardColor, width: 1.5)),
+                            top: 10, right: 11,
+                            child: AnimatedBuilder(
+                              animation: _pulseController,
+                              builder: (context, _) {
+                                final scale = 1.0 + _pulseController.value * 0.35;
+                                return Transform.scale(
+                                  scale: scale,
+                                  child: Container(
+                                    width: 8, height: 8,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFEF4444),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: AppTheme.cardColor, width: 1.5),
+                                      boxShadow: [BoxShadow(color: const Color(0xFFEF4444).withValues(alpha: _pulseController.value * 0.5), blurRadius: 6)],
+                                    ),
+                                  ),
+                                );
+                              },
                             ),
                           ),
                         ],
@@ -147,11 +299,40 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
             ),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 16),
 
-          // Search bar
+          // ── Location pill ─────────────────────────────────────────────
           FadeSlideIn(
             index: 1,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: TapScale(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppTheme.primaryColor.withValues(alpha: 0.15)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.location_on_rounded, size: 14, color: AppTheme.primaryColor),
+                      const SizedBox(width: 5),
+                      const Text('Kochi, Kerala', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primaryColor)),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.expand_more_rounded, size: 14, color: AppTheme.primaryColor),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // ── Animated search bar ───────────────────────────────────────
+          FadeSlideIn(
+            index: 2,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: TapScale(
@@ -175,7 +356,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Search equipment', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppTheme.textPrimary)),
+                            AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 300),
+                              switchInCurve: Curves.easeOut,
+                              switchOutCurve: Curves.easeIn,
+                              transitionBuilder: (child, anim) => FadeTransition(
+                                opacity: anim,
+                                child: child,
+                              ),
+                              child: Text(
+                                _hints[_hintIndex],
+                                key: ValueKey(_hintIndex),
+                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppTheme.textPrimary),
+                              ),
+                            ),
                             const SizedBox(height: 2),
                             Text('Tools, machines, electronics...', style: TextStyle(fontSize: 12, color: AppTheme.textTertiary)),
                           ],
@@ -190,11 +384,99 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
             ),
           ),
+          const SizedBox(height: 20),
+
+          // ── Promo banner ──────────────────────────────────────────────
+          FadeSlideIn(
+            index: 3,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: TapScale(
+                child: Container(
+                  height: 110,
+                  clipBehavior: Clip.antiAlias,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF052E2D), Color(0xFF0B6E6B), Color(0xFF10A09A)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    boxShadow: [BoxShadow(color: AppTheme.primaryColor.withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 8))],
+                  ),
+                  child: Stack(
+                    children: [
+                      // Decorative circles
+                      Positioned(
+                        top: -20, right: 50,
+                        child: Container(
+                          width: 90, height: 90,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withValues(alpha: 0.06),
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        bottom: -30, right: -10,
+                        child: Container(
+                          width: 110, height: 110,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withValues(alpha: 0.07),
+                          ),
+                        ),
+                      ),
+                      // Content
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: const Text('LIMITED TIME', style: TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1.2)),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  const Text('First rental\n20% off', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800, height: 1.2, letterSpacing: -0.4)),
+                                ],
+                              ),
+                            ),
+                            Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Text('Claim', style: TextStyle(color: Color(0xFF0B6E6B), fontSize: 13, fontWeight: FontWeight.w800)),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
           const SizedBox(height: 28),
 
-          // Categories section
+          // ── Categories section ────────────────────────────────────────
           FadeSlideIn(
-            index: 2,
+            index: 4,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Row(
@@ -208,11 +490,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
           const SizedBox(height: 14),
           FadeSlideIn(
-            index: 3,
+            index: 5,
             child: SizedBox(
-              height: 96,
+              height: 116,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 itemCount: RentalCategory.categories.length,
                 separatorBuilder: (_, _) => const SizedBox(width: 12),
@@ -221,6 +504,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   return CategoryChip(
                     label: category.name,
                     icon: category.icon,
+                    accentColor: _categoryAccentColors[index % _categoryAccentColors.length],
                     isSelected: _selectedCategoryIndex == index,
                     onTap: () => setState(() => _selectedCategoryIndex = index),
                   );
@@ -230,25 +514,33 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
           const SizedBox(height: 32),
 
-          // Featured
+          // ── Featured section ──────────────────────────────────────────
           FadeSlideIn(
-            index: 4,
+            index: 6,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('Featured', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.textPrimary, letterSpacing: -0.3)),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(color: AppTheme.starColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(6)),
-                    child: Row(
-                      children: [
-                        Icon(Icons.local_fire_department_rounded, size: 14, color: AppTheme.starColor),
-                        const SizedBox(width: 4),
-                        Text('Hot', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.starColor)),
-                      ],
-                    ),
+                  AnimatedBuilder(
+                    animation: _pulseController,
+                    builder: (context, _) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppTheme.starColor.withValues(alpha: 0.10 + _pulseController.value * 0.06),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.local_fire_department_rounded, size: 14, color: AppTheme.starColor),
+                            const SizedBox(width: 4),
+                            Text('Hot', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.starColor)),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -256,14 +548,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
           const SizedBox(height: 14),
           FadeSlideIn(
-            index: 5,
+            index: 7,
             child: FeaturedCarousel(items: RentalItem.featuredItems, onItemTap: _openDetail),
           ),
           const SizedBox(height: 32),
 
-          // Popular items
+          // ── Popular section ───────────────────────────────────────────
           FadeSlideIn(
-            index: 6,
+            index: 8,
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Row(
@@ -299,7 +591,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               itemCount: RentalItem.sampleItems.length,
               itemBuilder: (context, index) {
                 return FadeSlideIn(
-                  index: 7 + index,
+                  index: 9 + index,
                   baseDelay: const Duration(milliseconds: 80),
                   child: ItemCard(item: RentalItem.sampleItems[index], onTap: () => _openDetail(RentalItem.sampleItems[index])),
                 );
@@ -327,6 +619,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     ];
 
     return CustomScrollView(
+      physics: const BouncingScrollPhysics(),
       slivers: [
         SliverToBoxAdapter(
           child: Padding(
@@ -338,7 +631,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 const SizedBox(height: 2),
                 const Text('Categories', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: AppTheme.textPrimary, letterSpacing: -0.6)),
                 const SizedBox(height: 20),
-                // Search bar
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
                   decoration: BoxDecoration(
@@ -405,8 +697,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
         ),
         const SliverToBoxAdapter(child: SizedBox(height: 32)),
-
-        // Popular in each category
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(24, 0, 24, 16),
@@ -438,10 +728,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Widget _buildBookingsTab() {
     return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
           Padding(
             padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
             child: Column(
@@ -471,142 +761,172 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
           const SizedBox(height: 24),
 
-          if (_selectedBookingTab == 0) ...[
-            // Live tracking CTA card
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: TapScale(
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrderTrackingScreen())),
-                child: Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF073A39), Color(0xFF0B6E6B)],
-                      begin: Alignment.topLeft, end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [BoxShadow(color: const Color(0xFF0B6E6B).withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 8))],
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 250),
+            transitionBuilder: (child, anim) => FadeTransition(opacity: anim, child: child),
+            child: _selectedBookingTab == 0
+                ? _buildActiveBookings()
+                : _buildPastBookings(),
+          ),
+
+          const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActiveBookings() {
+    return Column(
+      key: const ValueKey('active'),
+      children: [
+        // Live tracking CTA card
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: TapScale(
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OrderTrackingScreen())),
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF073A39), Color(0xFF0B6E6B)],
+                  begin: Alignment.topLeft, end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [BoxShadow(color: const Color(0xFF0B6E6B).withValues(alpha: 0.3), blurRadius: 20, offset: const Offset(0, 8))],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 52, height: 52,
+                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(16)),
+                    child: const Icon(Icons.local_shipping_rounded, color: Colors.white, size: 24),
                   ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 52, height: 52,
-                        decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.15), borderRadius: BorderRadius.circular(16)),
-                        child: const Icon(Icons.local_shipping_rounded, color: Colors.white, size: 24),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           children: [
-                            Row(
-                              children: [
-                                const Text('Live Tracking', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: -0.3)),
-                                const SizedBox(width: 8),
-                                Container(
+                            const Text('Live Tracking', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: -0.3)),
+                            const SizedBox(width: 8),
+                            // Pulsing LIVE badge
+                            AnimatedBuilder(
+                              animation: _pulseController,
+                              builder: (context, _) {
+                                return Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFF2DD4BF).withValues(alpha: 0.25),
+                                    color: const Color(0xFF2DD4BF).withValues(alpha: 0.18 + _pulseController.value * 0.15),
                                     borderRadius: BorderRadius.circular(20),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Container(width: 5, height: 5, decoration: const BoxDecoration(color: Color(0xFF2DD4BF), shape: BoxShape.circle)),
+                                      Container(
+                                        width: 5, height: 5,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF2DD4BF),
+                                          shape: BoxShape.circle,
+                                          boxShadow: [BoxShadow(color: const Color(0xFF2DD4BF).withValues(alpha: _pulseController.value * 0.6), blurRadius: 4)],
+                                        ),
+                                      ),
                                       const SizedBox(width: 4),
                                       const Text('LIVE', style: TextStyle(color: Color(0xFF2DD4BF), fontSize: 9, fontWeight: FontWeight.w700, letterSpacing: 1)),
                                     ],
                                   ),
-                                ),
-                              ],
+                                );
+                              },
                             ),
-                            const SizedBox(height: 4),
-                            Text('Dynamic Island & Lock Screen', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12)),
                           ],
                         ),
-                      ),
-                      Icon(Icons.arrow_forward_ios_rounded, color: Colors.white.withValues(alpha: 0.7), size: 14),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Active bookings empty state
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(32),
-                decoration: BoxDecoration(
-                  color: AppTheme.cardColor,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppTheme.dividerColor),
-                ),
-                child: Column(
-                  children: [
-                    Container(
-                      width: 72, height: 72,
-                      decoration: BoxDecoration(color: AppTheme.primaryLight, borderRadius: BorderRadius.circular(22)),
-                      child: const Icon(Icons.inventory_2_outlined, size: 32, color: AppTheme.primaryColor),
+                        const SizedBox(height: 4),
+                        Text('Dynamic Island & Lock Screen', style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 12)),
+                      ],
                     ),
-                    const SizedBox(height: 16),
-                    const Text('No active rentals', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
-                    const SizedBox(height: 6),
-                    Text('Browse items and start your first rental', style: TextStyle(fontSize: 13, color: AppTheme.textTertiary), textAlign: TextAlign.center),
-                    const SizedBox(height: 20),
-                    TapScale(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                        decoration: BoxDecoration(color: AppTheme.primaryColor, borderRadius: BorderRadius.circular(12)),
-                        child: const Text('Browse Items', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ] else ...[
-            // Past bookings — sample history
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                children: [
-                  _buildPastBookingCard(
-                    name: 'Power Drill Set',
-                    date: 'Mar 10, 2026',
-                    duration: '2 days',
-                    amount: '₹1,300',
-                    icon: Icons.hardware,
-                    statusColor: const Color(0xFF10B981),
-                    status: 'Returned',
                   ),
-                  const SizedBox(height: 14),
-                  _buildPastBookingCard(
-                    name: 'Digital Weighing Scale',
-                    date: 'Feb 24, 2026',
-                    duration: '4 hours',
-                    amount: '₹600',
-                    icon: Icons.monitor_weight_outlined,
-                    statusColor: const Color(0xFF10B981),
-                    status: 'Returned',
-                  ),
-                  const SizedBox(height: 14),
-                  _buildPastBookingCard(
-                    name: 'Portable Generator',
-                    date: 'Feb 12, 2026',
-                    duration: '1 day',
-                    amount: '₹2,000',
-                    icon: Icons.bolt,
-                    statusColor: const Color(0xFF10B981),
-                    status: 'Returned',
-                  ),
+                  Icon(Icons.arrow_forward_ios_rounded, color: Colors.white.withValues(alpha: 0.7), size: 14),
                 ],
               ),
             ),
-          ],
-          const SizedBox(height: 32),
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // Empty state
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              color: AppTheme.cardColor,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppTheme.dividerColor),
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: 72, height: 72,
+                  decoration: BoxDecoration(color: AppTheme.primaryLight, borderRadius: BorderRadius.circular(22)),
+                  child: const Icon(Icons.inventory_2_outlined, size: 32, color: AppTheme.primaryColor),
+                ),
+                const SizedBox(height: 16),
+                const Text('No active rentals', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
+                const SizedBox(height: 6),
+                Text('Browse items and start your first rental', style: TextStyle(fontSize: 13, color: AppTheme.textTertiary), textAlign: TextAlign.center),
+                const SizedBox(height: 20),
+                TapScale(
+                  onTap: () => setState(() => _selectedNavIndex = 0),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    decoration: BoxDecoration(color: AppTheme.primaryColor, borderRadius: BorderRadius.circular(12)),
+                    child: const Text('Browse Items', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPastBookings() {
+    return Padding(
+      key: const ValueKey('past'),
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        children: [
+          _buildPastBookingCard(
+            name: 'Power Drill Set',
+            date: 'Mar 10, 2026',
+            duration: '2 days',
+            amount: '₹1,300',
+            icon: Icons.hardware,
+            statusColor: const Color(0xFF10B981),
+            status: 'Returned',
+          ),
+          const SizedBox(height: 14),
+          _buildPastBookingCard(
+            name: 'Digital Weighing Scale',
+            date: 'Feb 24, 2026',
+            duration: '4 hours',
+            amount: '₹600',
+            icon: Icons.monitor_weight_outlined,
+            statusColor: const Color(0xFF10B981),
+            status: 'Returned',
+          ),
+          const SizedBox(height: 14),
+          _buildPastBookingCard(
+            name: 'Portable Generator',
+            date: 'Feb 12, 2026',
+            duration: '1 day',
+            amount: '₹2,000',
+            icon: Icons.bolt,
+            statusColor: const Color(0xFF10B981),
+            status: 'Returned',
+          ),
         ],
       ),
     );
@@ -708,6 +1028,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     ];
 
     return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
       child: Column(
         children: [
           // Profile hero
@@ -721,19 +1042,28 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
             child: Column(
               children: [
-                // Avatar
                 Stack(
                   children: [
-                    Container(
-                      width: 88, height: 88,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFF0B6E6B), Color(0xFF2DD4BF)],
-                          begin: Alignment.topLeft, end: Alignment.bottomRight,
-                        ),
-                        shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(color: const Color(0xFF0B6E6B).withValues(alpha: 0.3), blurRadius: 16, offset: const Offset(0, 6))],
-                      ),
+                    AnimatedBuilder(
+                      animation: _pulseController,
+                      builder: (context, child) {
+                        return Container(
+                          width: 88, height: 88,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF0B6E6B), Color(0xFF2DD4BF)],
+                              begin: Alignment.topLeft, end: Alignment.bottomRight,
+                            ),
+                            shape: BoxShape.circle,
+                            boxShadow: [BoxShadow(
+                              color: const Color(0xFF0B6E6B).withValues(alpha: 0.2 + _pulseController.value * 0.12),
+                              blurRadius: 16 + _pulseController.value * 8,
+                              offset: const Offset(0, 6),
+                            )],
+                          ),
+                          child: child,
+                        );
+                      },
                       child: const Center(
                         child: Text('S', style: TextStyle(color: Colors.white, fontSize: 34, fontWeight: FontWeight.w800)),
                       ),
@@ -753,8 +1083,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 const SizedBox(height: 4),
                 Text('sachu@example.com', style: TextStyle(fontSize: 13, color: AppTheme.textTertiary)),
                 const SizedBox(height: 20),
-
-                // Stats row
                 Container(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   decoration: BoxDecoration(color: AppTheme.backgroundColor, borderRadius: BorderRadius.circular(16)),

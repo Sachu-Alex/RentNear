@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'login_screen.dart';
+import 'onboarding_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -187,7 +187,7 @@ class _SplashScreenState extends State<SplashScreen>
         context,
         PageRouteBuilder(
           pageBuilder: (context, animation, secondaryAnimation) =>
-              const LoginScreen(),
+              const OnboardingScreen(),
           transitionsBuilder: (context, animation, secondaryAnimation, child) {
             final curved =
                 CurvedAnimation(parent: animation, curve: Curves.easeInOut);
