@@ -13,5 +13,6 @@ struct NearbyItemsWidgetBundle: WidgetBundle {
     var body: some Widget {
         NearbyItemsWidget()
         NearbyItemsWidgetControl()
+        OrderTrackingLiveActivity()
     }
 }

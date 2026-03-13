@@ -69,6 +69,12 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
               const SizedBox(height: 28),
             ],
 
+            // Simulation running indicator
+            if (_service.isSimulating) ...[
+              _SimulationBanner(),
+              const SizedBox(height: 16),
+            ],
+
             // Action buttons
             if (!_service.isActive)
               _ActionButton(
@@ -84,9 +90,27 @@ class _OrderTrackingScreenState extends State<OrderTrackingScreen> {
                 icon: Icons.update,
                 color: const Color(0xFF4A90D9),
                 loading: _loading,
-                enabled: _service.canAdvance,
+                enabled: _service.canAdvance && !_service.isSimulating,
                 onPressed: () => _run(_service.advanceStatus),
               ),
+              const SizedBox(height: 12),
+              if (!_service.isSimulating)
+                _ActionButton(
+                  label: 'Simulate Background Updates',
+                  icon: Icons.fast_forward,
+                  color: const Color(0xFF9B59B6),
+                  loading: _loading,
+                  enabled: _service.canAdvance,
+                  onPressed: () => _run(_service.startSimulation),
+                )
+              else
+                _ActionButton(
+                  label: 'Stop Simulation',
+                  icon: Icons.stop,
+                  color: const Color(0xFFE67E22),
+                  loading: _loading,
+                  onPressed: () => _run(_service.stopSimulation),
+                ),
               const SizedBox(height: 12),
               _ActionButton(
                 label: 'End Order Tracking',
@@ -535,6 +559,45 @@ class _ActionButton extends StatelessWidget {
                 RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ─── Simulation Banner ────────────────────────────────────────────────────────
+
+class _SimulationBanner extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF9B59B6).withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF9B59B6).withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: Color(0xFF9B59B6),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Text(
+              'Background simulation running • Updates every 8 seconds',
+              style: TextStyle(
+                color: Color(0xFF9B59B6),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

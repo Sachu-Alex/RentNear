@@ -52,5 +52,28 @@ class PlatformChannelService {
     }
   }
 
+  static Future<bool> simulateBackgroundUpdates() async {
+    if (!_isIOS()) return false;
+    try {
+      final result =
+          await _channel.invokeMethod<bool>('simulateBackgroundUpdates');
+      return result ?? false;
+    } on PlatformException catch (e) {
+      debugPrint('simulateBackgroundUpdates error: ${e.message}');
+      return false;
+    }
+  }
+
+  static Future<bool> stopSimulation() async {
+    if (!_isIOS()) return false;
+    try {
+      final result = await _channel.invokeMethod<bool>('stopSimulation');
+      return result ?? false;
+    } on PlatformException catch (e) {
+      debugPrint('stopSimulation error: ${e.message}');
+      return false;
+    }
+  }
+
   static bool _isIOS() => defaultTargetPlatform == TargetPlatform.iOS;
 }

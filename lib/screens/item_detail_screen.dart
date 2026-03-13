@@ -718,8 +718,10 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (context) {
-        return Container(
+        return SingleChildScrollView(
+          child: Container(
           padding: EdgeInsets.fromLTRB(
             24,
             28,
@@ -873,7 +875,8 @@ class _ItemDetailScreenState extends State<ItemDetailScreen> {
               ),
             ],
           ),
-        );
+          ),  // Container
+        );    // SingleChildScrollView
       },
     );
   }

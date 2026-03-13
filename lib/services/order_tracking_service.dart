@@ -18,6 +18,9 @@ class OrderTrackingService {
   bool _isActive = false;
   bool get isActive => _isActive;
 
+  bool _isSimulating = false;
+  bool get isSimulating => _isSimulating;
+
   OrderStatus _currentStatus = OrderStatus.confirmed;
   OrderStatus get currentStatus => _currentStatus;
 
@@ -60,9 +63,24 @@ class OrderTrackingService {
   }
 
   Future<bool> endTracking() async {
+    await stopSimulation();
     final success = await PlatformChannelService.endLiveActivity();
     _isActive = false;
     _currentStatus = OrderStatus.confirmed;
+    return success;
+  }
+
+  Future<bool> startSimulation() async {
+    if (!_isActive) return false;
+    final success = await PlatformChannelService.simulateBackgroundUpdates();
+    _isSimulating = success;
+    return success;
+  }
+
+  Future<bool> stopSimulation() async {
+    if (!_isSimulating) return true;
+    final success = await PlatformChannelService.stopSimulation();
+    _isSimulating = false;
     return success;
   }
 
