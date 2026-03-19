@@ -1,6 +1,6 @@
 # rent_products
 
-A new Flutter project.
+A mobile-first rental application featuring login, registration, and a dynamic home screen for browsing rentable items such as weighing machines and tools, designed with a clean and scalable UI/UX approach.
 
 ## Getting Started
 
